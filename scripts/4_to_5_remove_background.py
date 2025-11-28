@@ -3,11 +3,12 @@
 
 执行流程：
 1. 以 5% 容忍度判定白色像素，并生成“非白”掩码。
-2. 将掩码按圆形半径 10px 进行膨胀，确保蒙版区域足够覆盖。
-3. 对膨胀结果施加 5px 羽化，使边缘更加柔和。
+2. 将掩码按圆形半径 12px 进行膨胀，确保蒙版区域足够覆盖。
+3. 对膨胀结果施加 2px 羽化，使边缘更加柔和。
 4. 根据 MODE 输出：
    - MODE=TEST：蒙版区域涂成红色，其他像素保持原样。
    - MODE=PRODUCT：保留蒙版区域原像素，其他像素置为透明。
+5. 裁去四周整行/列的全透明像素，再补上 5px padding。
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ WHITE_TOLERANCE_IN = 0.01
 WHITE_TOLERANCE_OUT = 0.09
 MASK_EXPAND_RADIUS = 12
 FEATHER_RADIUS = 2
+PADDING_PX = 5
 MASK_COLOR = np.array([255, 0, 0, 255], dtype=np.uint8)
 
 STRUCTURING_OFFSETS = tuple(
@@ -112,6 +114,38 @@ def _feather_mask(mask: np.ndarray, radius: int) -> np.ndarray:
     return np.clip(feather, 0.0, 1.0)
 
 
+def _trim_transparent_edges(arr: np.ndarray, padding: int) -> np.ndarray:
+    """裁去四周整行/列的透明区域，并补上指定 padding。"""
+    alpha = arr[..., 3]
+    height, width = alpha.shape
+    top = 0
+    while top < height and np.all(alpha[top] == 0):
+        top += 1
+    bottom = height
+    while bottom > top and np.all(alpha[bottom - 1] == 0):
+        bottom -= 1
+    left = 0
+    while left < width and np.all(alpha[:, left] == 0):
+        left += 1
+    right = width
+    while right > left and np.all(alpha[:, right - 1] == 0):
+        right -= 1
+
+    if top >= bottom or left >= right:
+        cropped = arr.copy()
+    else:
+        cropped = arr[top:bottom, left:right]
+
+    if padding <= 0:
+        return cropped.copy()
+
+    new_height = cropped.shape[0] + padding * 2
+    new_width = cropped.shape[1] + padding * 2
+    padded = np.zeros((new_height, new_width, arr.shape[2]), dtype=arr.dtype)
+    padded[padding:padding + cropped.shape[0], padding:padding + cropped.shape[1]] = cropped
+    return padded
+
+
 def _build_subject_mask(arr: np.ndarray) -> np.ndarray:
     """结合内外容忍度生成主体蒙版。"""
     outer_white = _white_mask(arr, WHITE_TOLERANCE_OUT)
@@ -149,6 +183,7 @@ def process_image(path: Path, mode: Mode) -> None:
         mask = _expand_mask(mask)
         mask = _feather_mask(mask, FEATHER_RADIUS)
         rendered = _render(arr, mask, mode)
+        rendered = _trim_transparent_edges(rendered, PADDING_PX)
         result = Image.fromarray(rendered, mode="RGBA")
         TARGET_DIR.mkdir(parents=True, exist_ok=True)
         result.save(target_path, format="PNG")
