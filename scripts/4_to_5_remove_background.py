@@ -29,8 +29,8 @@ TARGET_DIR = ROOT_DIR / "data" / "5_transport"
 WHITE_TOLERANCE_IN = 0.01
 WHITE_TOLERANCE_OUT = 0.09
 MASK_EXPAND_RADIUS = 10
-FEATHER_RADIUS = 1
-PADDING_PX = 2
+FEATHER_RADIUS = 0.5
+PADDING_PX = 0
 MASK_COLOR = np.array([255, 0, 0, 255], dtype=np.uint8)
 
 STRUCTURING_OFFSETS = tuple(
@@ -104,7 +104,7 @@ def _expand_mask(mask: np.ndarray) -> np.ndarray:
     return expanded
 
 
-def _feather_mask(mask: np.ndarray, radius: int) -> np.ndarray:
+def _feather_mask(mask: np.ndarray, radius: int | float) -> np.ndarray:
     """对布尔掩码应用羽化，返回 0-1 的软边蒙版。"""
     if radius <= 0:
         return mask.astype(np.float32)
