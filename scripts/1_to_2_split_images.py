@@ -52,6 +52,17 @@ def _padding_color(img: Image.Image):
 def split_image(path: Path) -> None:
     """执行单张图片的切分与保存，确保输出命名为 %03d_%d_%d。"""
     image_id, cols, rows = parse_filename(path)
+    existing_tiles: list[str] = []
+    for row in range(rows):
+        for col in range(cols):
+            tile_path = TARGET_DIR / f"{image_id:03d}_{row + 1}_{col + 1}.png"
+            if tile_path.exists():
+                existing_tiles.append(tile_path.name)
+    if existing_tiles:
+        preview = ", ".join(existing_tiles[:3])
+        if len(existing_tiles) > 3:
+            preview += "..."
+        raise FileExistsError(f"目标切片已存在（例如：{preview}），已跳过以避免覆盖")
     with Image.open(path) as img:
         width, height = img.size
         pad_w = (-width) % cols

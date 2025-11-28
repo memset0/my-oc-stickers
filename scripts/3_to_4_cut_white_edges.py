@@ -20,7 +20,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT_DIR / "data" / "3_edited"
 TARGET_DIR = ROOT_DIR / "data" / "4_final"
 
-WHITE_RATIO = 0.95
+WHITE_RATIO = 0.98
 WHITE_TOLERANCE = 0.05
 WHITE_LEVEL = int(255 * (1 - WHITE_TOLERANCE))
 BORDER_RATIO = 0.05
@@ -115,6 +115,9 @@ def _crop_with_padding(img: Image.Image, box: tuple[int, int, int, int]) -> Imag
 
 def process_image(path: Path) -> None:
     """对单张图片执行判白、裁剪和补白输出到目标目录。"""
+    target_path = TARGET_DIR / path.name
+    if target_path.exists():
+        raise FileExistsError(f"目标文件已存在：{target_path.name}")
     with Image.open(path) as raw:
         working = raw.convert("RGBA")
         mask = _white_mask(working)
@@ -122,7 +125,7 @@ def process_image(path: Path) -> None:
         target_box = _target_box(working.size, offsets)
         result = _crop_with_padding(working, target_box)
         TARGET_DIR.mkdir(parents=True, exist_ok=True)
-        result.save(TARGET_DIR / path.name, format="PNG")
+        result.save(target_path, format="PNG")
 
 
 def main() -> None:
