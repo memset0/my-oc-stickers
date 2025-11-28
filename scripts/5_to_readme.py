@@ -12,7 +12,7 @@ import random
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-FINAL_DIR = ROOT_DIR / "data" / "4_final"
+FINAL_DIR = ROOT_DIR / "data" / "5_transport"
 README_PATH = ROOT_DIR / "README.md"
 
 PREVIEW_START = "<!-- preview start -->"

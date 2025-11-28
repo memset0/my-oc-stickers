@@ -18,7 +18,7 @@ from PIL import Image
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT_DIR / "data" / "3_edited"
-TARGET_DIR = ROOT_DIR / "data" / "4_final"
+TARGET_DIR = ROOT_DIR / "data" / "4_located"
 
 WHITE_RATIO = 0.98
 WHITE_TOLERANCE = 0.05
