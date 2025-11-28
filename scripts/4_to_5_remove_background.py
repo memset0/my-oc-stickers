@@ -3,8 +3,9 @@
 
 执行流程：
 1. 以 5% 容忍度判定白色像素，并生成“非白”掩码。
-2. 将掩码按圆形半径 5px 进行膨胀，确保蒙版区域足够覆盖。
-3. 根据 MODE 输出：
+2. 将掩码按圆形半径 10px 进行膨胀，确保蒙版区域足够覆盖。
+3. 对膨胀结果施加 5px 羽化，使边缘更加柔和。
+4. 根据 MODE 输出：
    - MODE=TEST：蒙版区域涂成红色，其他像素保持原样。
    - MODE=PRODUCT：保留蒙版区域原像素，其他像素置为透明。
 """
@@ -18,7 +19,7 @@ from enum import Enum
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT_DIR / "data" / "4_located"
@@ -26,7 +27,8 @@ TARGET_DIR = ROOT_DIR / "data" / "5_transport"
 
 WHITE_TOLERANCE_IN = 0.01
 WHITE_TOLERANCE_OUT = 0.09
-MASK_EXPAND_RADIUS = 10
+MASK_EXPAND_RADIUS = 12
+FEATHER_RADIUS = 2
 MASK_COLOR = np.array([255, 0, 0, 255], dtype=np.uint8)
 
 STRUCTURING_OFFSETS = tuple(
@@ -88,7 +90,7 @@ def _outer_background_mask(white_mask: np.ndarray) -> np.ndarray:
 
 
 def _expand_mask(mask: np.ndarray) -> np.ndarray:
-    """按圆形半径 5px 膨胀掩码。"""
+    """按圆形半径 10px 膨胀掩码。"""
     if MASK_EXPAND_RADIUS <= 0:
         return mask
     pad = MASK_EXPAND_RADIUS
@@ -98,6 +100,16 @@ def _expand_mask(mask: np.ndarray) -> np.ndarray:
     for dy, dx in STRUCTURING_OFFSETS:
         expanded |= padded[pad + dy: pad + dy + height, pad + dx: pad + dx + width]
     return expanded
+
+
+def _feather_mask(mask: np.ndarray, radius: int) -> np.ndarray:
+    """对布尔掩码应用羽化，返回 0-1 的软边蒙版。"""
+    if radius <= 0:
+        return mask.astype(np.float32)
+    mask_image = Image.fromarray((mask * 255).astype(np.uint8), mode="L")
+    blurred = mask_image.filter(ImageFilter.GaussianBlur(radius=radius))
+    feather = np.asarray(blurred, dtype=np.float32) / 255.0
+    return np.clip(feather, 0.0, 1.0)
 
 
 def _build_subject_mask(arr: np.ndarray) -> np.ndarray:
@@ -111,14 +123,17 @@ def _build_subject_mask(arr: np.ndarray) -> np.ndarray:
 
 def _render(arr: np.ndarray, mask: np.ndarray, mode: Mode) -> np.ndarray:
     """根据模式输出图像数组。"""
+    mask_float = mask.astype(np.float32)
+    mask_4d = mask_float[..., None]
+    arr_float = arr.astype(np.float32)
     if mode is Mode.TEST:
-        result = arr.copy()
-        result[mask] = MASK_COLOR
-        return result
+        result = arr_float * (1.0 - mask_4d) + MASK_COLOR.astype(np.float32) * mask_4d
+        return np.clip(result, 0, 255).astype(np.uint8)
     if mode is Mode.PRODUCT:
-        result = np.zeros_like(arr, dtype=np.uint8)
-        result[mask] = arr[mask]
-        return result
+        result = np.zeros_like(arr_float)
+        result[..., :3] = arr_float[..., :3] * mask_4d + 255.0 * (1.0 - mask_4d)
+        result[..., 3] = arr_float[..., 3] * mask_float
+        return np.clip(result, 0, 255).astype(np.uint8)
     raise ValueError(f"不支持的模式：{mode}")
 
 
@@ -132,6 +147,7 @@ def process_image(path: Path, mode: Mode) -> None:
         arr = np.asarray(working, dtype=np.uint8)
         mask = _build_subject_mask(arr)
         mask = _expand_mask(mask)
+        mask = _feather_mask(mask, FEATHER_RADIUS)
         rendered = _render(arr, mask, mode)
         result = Image.fromarray(rendered, mode="RGBA")
         TARGET_DIR.mkdir(parents=True, exist_ok=True)
